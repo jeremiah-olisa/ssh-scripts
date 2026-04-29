@@ -220,16 +220,38 @@ This script aligns with:
 
 ## 📄 License
 
-[Your License Here]
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
+
+**You are free to:**
+- ✅ Use for any purpose (personal, commercial)
+- ✅ Modify and fork without permission
+- ✅ Distribute and sublicense
+- ✅ Use privately or publicly
+
+**You must:**
+- ✅ Include a copy of the license
+- ✅ Provide attribution to the original author
+
+---
 
 ## 🐛 Issues & Contributions
 
-Found a bug? Want to contribute? Open an issue or PR.
+Found a bug? Want to contribute? See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### 🔒 Security Issues
+
+**Do not open public GitHub issues for security vulnerabilities.** See [SECURITY.md](SECURITY.md) for responsible disclosure.
 
 ---
 
 ## 📚 Documentation
 
 - [USAGE.md](USAGE.md) — Detailed guide for `harden-node.sh`
-- [SETUP-SSH-KEYS.md](SETUP-SSH-KEYS.md) — SSH key generation & authentication hardening
-- This file — Project overview & features
+- [SETUP-SSH-KEYS.md](SETUP-SSH-KEYS.md) — SSH key setup & authentication
+- [SECURITY.md](SECURITY.md) — Responsible disclosure & security policy
+- [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
+- [LICENSE](LICENSE) — MIT License
+
+---
+
+

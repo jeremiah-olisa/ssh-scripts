@@ -1,0 +1,43 @@
+# Ignore backups
+*.bak
+*.backup
+*~
+
+# Ignore system/temporary files
+.DS_Store
+.env
+.env.local
+.envrc
+
+# SSH keys (NEVER commit these!)
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+known_hosts
+authorized_keys*
+!authorized_keys.example
+
+# Logs
+*.log
+/var/log/*
+
+# UFW & iptables backups
+/var/backups/ufw-rules-*.bak
+
+# Temporary files
+/tmp/*
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Node/misc
+node_modules/
+.pem
+.key

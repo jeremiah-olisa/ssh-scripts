@@ -174,11 +174,22 @@ section "Cloudflared"
 if ! command -v cloudflared &>/dev/null; then
   info "Installing cloudflared..."
   mkdir -p /usr/share/keyrings
+  
+  # Clean up any broken previous key attempts
+  rm -f /usr/share/keyrings/cloudflare-archive-keyring.gpg /usr/share/keyrings/cloudflare-main.gpg
+  
+  # Download and save the GPG key in binary format (do NOT dearmor)
   curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-    | tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null
-  echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] \
-https://pkg.cloudflare.com/cloudflared any main" \
+    | tee /usr/share/keyrings/cloudflare-archive-keyring.gpg > /dev/null
+  
+  # Set correct permissions (apt needs 644 to read it)
+  chmod 644 /usr/share/keyrings/cloudflare-archive-keyring.gpg
+  
+  # Add the repository with proper signed-by reference
+  echo "deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared any main" \
     | tee /etc/apt/sources.list.d/cloudflared.list > /dev/null
+  
+  # Update and install (apt should now verify the key cleanly)
   apt-get update -qq
   apt-get install -y -qq cloudflared
   log "cloudflared installed"

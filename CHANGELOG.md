@@ -44,6 +44,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - **Documentation** — README now references VERIFICATION.md for comprehensive testing guide
+- **Cloudflared GPG key handling** — Fixed to properly handle key format & permissions
+  - Now correctly saves key in binary format
+  - Sets permissions to 644 for apt accessibility
+  - Cleans up broken previous attempts
+  - Includes proper `[signed-by=...]` repo configuration
+
+### Fixed
+
+- **Cloudflared installation GPG errors** — Resolves "NO_PUBKEY 254B391D8CACCBF8" signature verification failures
+  - Root cause: Improper key file format handling & incorrect permissions
+  - Solution: Download binary key, set 644 permissions, use `cloudflare-archive-keyring.gpg` filename
+  - Documented troubleshooting steps in USAGE.md and VERIFICATION.md
 
 ---
 

@@ -752,6 +752,57 @@ sudo bash /etc/iptables/apply-docker-rules.sh
 sudo grep -r "update-cloudflare" /var/spool/cron/
 ```
 
+### Cloudflared GPG Key Error (NO_PUBKEY 254B391D8CACCBF8 or 8A682D308D4E5E73)
+
+**Symptom:** Apt update fails during cloudflared installation:
+```
+W: GPG error: https://pkg.cloudflare.com/cloudflared any InRelease: 
+   The following signatures couldn't be verified because the public key is not available: 
+   NO_PUBKEY 254B391D8CACCBF8 NO_PUBKEY 8A682D308D4E5E73
+E: The repository 'https://pkg.cloudflare.com/cloudflared any InRelease' is not signed.
+```
+
+**Root Cause:**
+- The GPG key wasn't properly installed OR
+- Key file has incorrect permissions (apt needs 644)
+- Key was improperly processed (needs binary format, not ASCII-armored)
+
+**Checklist:**
+```bash
+# 1. Does key file exist?
+ls -la /usr/share/keyrings/cloudflare-archive-keyring.gpg
+
+# 2. Check permissions (should be 644, not 640 or 600)
+stat /usr/share/keyrings/cloudflare-archive-keyring.gpg | grep Access
+
+# 3. Verify key is valid
+sudo gpg --show-keys /usr/share/keyrings/cloudflare-archive-keyring.gpg
+# Should show: pub rsa4096 with fingerprint ending in 8A682D308D4E5E73
+```
+
+**Solutions:**
+```bash
+# Clean up any broken previous attempts
+sudo rm -f /usr/share/keyrings/cloudflare-archive-keyring.gpg /usr/share/keyrings/cloudflare-main.gpg
+
+# Download the key and save in binary format (do NOT use gpg --dearmor)
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-archive-keyring.gpg > /dev/null
+
+# Set correct permissions — apt needs 644 to read the keyring
+sudo chmod 644 /usr/share/keyrings/cloudflare-archive-keyring.gpg
+
+# Re-add repository with proper signed-by reference
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+
+# Update and install
+sudo apt-get update
+sudo apt-get install -y cloudflared
+
+# Verify key is correct
+sudo gpg --show-keys /usr/share/keyrings/cloudflare-archive-keyring.gpg
+# Should now show fingerprint ending in 8A682D308D4E5E73
+```
+
 ---
 
 ## Maintenance

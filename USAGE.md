@@ -826,6 +826,50 @@ sudo bash harden-node.sh
 
 ---
 
+### Problem: "Cloudflared GPG key error" (NO_PUBKEY 254B391D8CACCBF8 or 8A682D308D4E5E73)
+
+**Cause:** Cloudflare's GPG key wasn't properly installed or has incorrect permissions.
+
+**Symptom:**
+```
+W: GPG error: https://pkg.cloudflare.com/cloudflared any InRelease: 
+   The following signatures couldn't be verified because the public key is not available: 
+   NO_PUBKEY 254B391D8CACCBF8 NO_PUBKEY 8A682D308D4E5E73
+E: The repository is not signed.
+```
+
+**Solution:**
+```bash
+# Clean up any broken previous key attempts
+sudo rm -f /usr/share/keyrings/cloudflare-archive-keyring.gpg /usr/share/keyrings/cloudflare-main.gpg
+
+# Download and save the GPG key in binary format (NOT armored)
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-archive-keyring.gpg > /dev/null
+
+# Set correct permissions (apt needs 644 to read it)
+sudo chmod 644 /usr/share/keyrings/cloudflare-archive-keyring.gpg
+
+# Re-add the repository
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+
+# Update and install
+sudo apt-get update
+sudo apt-get install -y cloudflared
+```
+
+**Verification:**
+```bash
+# Confirm the key is readable and valid
+sudo gpg --show-keys /usr/share/keyrings/cloudflare-archive-keyring.gpg
+# Should show: pub rsa4096 with fingerprint ending in 8A682D308D4E5E73
+
+# Confirm apt can verify the repo
+sudo apt-get update 2>&1 | grep -i cloudflare
+# Should NOT show errors
+```
+
+---
+
 ## Maintenance
 
 ### Monthly Tasks

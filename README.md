@@ -39,11 +39,48 @@ A **production-grade, idempotent bash script** for hardening Ubuntu 24.04 LTS no
 - **Docker**: Optional but recommended (required for DOCKER-USER rules)
 - **Tailscale**: Installed separately (script automates installation)
 
-## ⚡ Quick Start
+## 📥 Installation
 
-### 1. Harden the Node
+### Option 1: Quick One-Liner (Recommended for Owners/Trusted Users)
 
 ```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/harden-node.sh)
+```
+
+### Option 2: Download, Review, Then Run (Most Secure)
+
+```bash
+# Download
+curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/harden-node.sh -o harden-node.sh
+
+# Review (always recommended for security scripts!)
+cat harden-node.sh | less
+
+# Run
+sudo bash harden-node.sh
+```
+
+### Option 3: Clone the Full Repository
+
+```bash
+git clone https://github.com/jeremiah-olisa/ssh-scripts.git
+cd ssh-scripts
+sudo bash harden-node.sh
+```
+
+## ⚡ Quick Start
+
+### 1. Harden the Node (Pick One Method Above)
+
+**Fastest:**
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/harden-node.sh)
+```
+
+**Or manually:**
+```bash
+git clone https://github.com/jeremiah-olisa/ssh-scripts.git
+cd ssh-scripts
 sudo bash harden-node.sh
 ```
 

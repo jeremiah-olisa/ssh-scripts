@@ -351,6 +351,201 @@ This script:
 
 ---
 
+## ✅ Verification & Testing
+
+After running both scripts, **verify everything is hardened correctly**:
+
+### Step 1: Auto-Verification (Recommended)
+
+```bash
+sudo bash verify-hardening.sh
+```
+
+This runs **50+ automated checks**:
+- ✅ UFW firewall rules
+- ✅ SSH hardening settings
+- ✅ Tailscale connectivity
+- ✅ iptables DOCKER-USER chain
+- ✅ Kernel hardening (sysctl)
+- ✅ Auditd rules
+- ✅ Fail2Ban status
+- ✅ AppArmor active
+- ✅ SSH key permissions
+
+**Expected output:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ HARDENING VERIFICATION REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Total Checks:  50
+  Passed:        50
+  Failed:        0
+
+✅ ALL CHECKS PASSED — System is hardened!
+```
+
+### Step 2: Display Full Checklist
+
+```bash
+bash hardening-checklist.sh
+```
+
+Shows:
+- 📝 All verification items with explanations
+- 🔧 Exact commands to run for each check
+- 📋 Expected output for each command
+- 🧪 Manual testing instructions
+- 📁 Key files to review
+- ⚠️ Important reminders
+
+### Step 3: Manual Testing (from your Mac)
+
+#### Test SSH Access
+
+```bash
+# Should TIMEOUT (blocked by UFW/iptables)
+ssh user@<your-public-ip> -p 22
+# Connection timeout ✅
+
+# Should WORK (via Tailscale only)
+ssh -i ~/.ssh/id_rsa user@100.x.x.x
+# Connected successfully ✅
+```
+
+#### Test App Port Access
+
+```bash
+# Should TIMEOUT (blocked by iptables DOCKER-USER)
+curl http://<your-public-ip>:3000
+# Connection timeout ✅
+
+curl http://<your-public-ip>:3123
+# Connection timeout ✅
+
+# Should WORK (via Cloudflare tunnel only)
+curl https://your-app-domain.com
+# Returns 200 OK ✅
+```
+
+#### Test Cloudflare Tunnel
+
+```bash
+# Direct IP access should fail
+curl https://<your-public-ip>
+# SSL certificate error or timeout ✅
+
+# Domain via tunnel should work
+curl https://your-app-domain.com
+# Returns 200 OK ✅
+```
+
+### Step 4: Review Key Settings
+
+#### UFW Firewall Status
+
+```bash
+sudo ufw status verbose
+```
+
+**Should show:**
+```
+Status: active
+
+Default: deny (incoming), allow (outgoing)
+
+22/tcp on tailscale0           ALLOW       Anywhere
+80/tcp                         ALLOW       173.245.48.0/20
+443/tcp                        ALLOW       173.245.48.0/20
+2377                           DENY        Anywhere
+7946                           DENY        Anywhere
+3000                           DENY        Anywhere
+```
+
+#### SSH Configuration
+
+```bash
+sudo sshd -T | grep -E "permitrootlogin|passwordauthentication|pubkeyauthentication"
+```
+
+**Should show:**
+```
+permitrootlogin no
+passwordauthentication no
+pubkeyauthentication yes
+```
+
+#### iptables DOCKER-USER Chain
+
+```bash
+sudo iptables -S DOCKER-USER
+```
+
+**Should show:**
+```
+-P DOCKER-USER - [0:0]
+-A DOCKER-USER -s 100.64.0.0/10 -j RETURN
+-A DOCKER-USER -p tcp -m tcp --dport 443 -s 173.245.48.0/20 -j RETURN
+-A DOCKER-USER -p tcp -m tcp --dport 80 -s 173.245.48.0/20 -j RETURN
+-A DOCKER-USER -p tcp -m tcp --dport 80 -j DROP
+-A DOCKER-USER -p tcp -m tcp --dport 443 -j DROP
+-A DOCKER-USER -p tcp -m tcp --dport 3000 -j DROP
+```
+
+#### Tailscale Status
+
+```bash
+sudo tailscale status
+```
+
+**Should show:**
+```
+100.x.x.x   hostname      linux   ok  (your node)
+100.x.x.x   other-node    linux   ok  (other nodes)
+```
+
+### Step 5: Check Services
+
+```bash
+sudo systemctl status ufw
+sudo systemctl status fail2ban
+sudo systemctl status auditd
+sudo systemctl status unattended-upgrades
+sudo systemctl status docker-iptables-fix
+```
+
+All should show: `active (running)`
+
+### Troubleshooting Failed Checks
+
+If `verify-hardening.sh` shows any failed checks:
+
+1. **Identify the failed check** from output
+2. **Run the command manually** to see what's wrong:
+   ```bash
+   # Example: SSH config check
+   sudo sshd -T | grep passwordauthentication
+   ```
+3. **Compare with expected output** from checklist
+4. **Fix the issue:**
+   ```bash
+   # Re-run hardening script
+   sudo bash harden-node.sh
+   
+   # Or manually fix config
+   sudo nano /etc/ssh/sshd_config.d/hardening.conf
+   sudo sshd -t  # Validate syntax
+   sudo systemctl reload ssh
+   ```
+5. **Re-run verification:**
+   ```bash
+   sudo bash verify-hardening.sh
+   ```
+
+**See [VERIFICATION.md](VERIFICATION.md) for detailed troubleshooting.**
+
+---
+
 ## Common Scenarios
 
 ### Scenario 1: Fresh Node Setup

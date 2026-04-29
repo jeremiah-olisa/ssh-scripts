@@ -174,14 +174,48 @@ sudo bash /etc/iptables/apply-docker-rules.sh
 
 ## 📊 Verification
 
-After running, check the security checklist output. All items should show `✓`. If any show `✗`:
+### One-Liners for Hardening & Verification
+
+**Harden everything (hardening + SSH keys):**
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/harden-node.sh) && sudo bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/setup-ssh-keys.sh) --generate
+```
+
+**Auto-verify all hardening (50+ checks):**
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/verify-hardening.sh)
+```
+
+**Display full verification checklist:**
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/jeremiah-olisa/ssh-scripts/main/hardening-checklist.sh)
+```
+
+### Quick Manual Checks
+
+If any auto-verification checks fail, debug with:
 
 ```bash
-sudo bash /etc/iptables/apply-docker-rules.sh
-sudo systemctl restart docker-iptables-fix
+# UFW firewall
 sudo ufw status verbose
+
+# iptables DOCKER-USER chain
 sudo iptables -L DOCKER-USER -n
+
+# SSH hardening
+sudo sshd -T | grep -E "permitrootlogin|passwordauthentication|pubkeyauth"
+
+# Tailscale status
+sudo tailscale status
+
+# Kernel parameters
+sudo cat /etc/sysctl.d/99-hardening.conf
+
+# Audit rules
+sudo auditctl -l | wc -l
 ```
+
+**For comprehensive verification guide, see [VERIFICATION.md](VERIFICATION.md).**
 
 ## 🛠️ Troubleshooting
 
@@ -255,7 +289,59 @@ This script aligns with:
 - **NIST SP 800-53** SI-7 (audit), AC-3 (access control)
 - **ISO 27001** A.12 (operations security)
 
-## 📄 License
+## ✅ Verification
+
+After running the hardening scripts, verify everything is configured correctly:
+
+### Quick Auto-Check (Recommended)
+
+```bash
+# Automatically verify all hardening steps
+sudo bash verify-hardening.sh
+```
+
+Shows:
+- ✅ **50+ automated checks** for all security controls
+- 🔍 Pass/fail status for each item
+- 📊 Summary report with total checks
+- 🎯 Next steps if anything failed
+
+### Manual Checklist
+
+```bash
+# Display the full verification checklist with commands
+bash hardening-checklist.sh
+```
+
+Provides:
+- 📝 All items to verify (UFW, SSH, iptables, Tailscale, etc.)
+- 🔧 Exact commands to run for each check
+- 📍 Expected output for each command
+- 🧪 Manual testing instructions from your Mac
+- ⚠️ Important reminders
+
+### Testing SSH Access (from your Mac)
+
+```bash
+# Should TIMEOUT (blocked by UFW/iptables)
+ssh user@<your-public-ip> -p 22
+
+# Should WORK (via Tailscale only)
+ssh -i ~/.ssh/id_rsa user@100.x.x.x
+```
+
+### Testing App Ports (from your Mac)
+
+```bash
+# Should TIMEOUT (blocked by iptables DOCKER-USER)
+curl http://<your-public-ip>:3000
+curl http://<your-public-ip>:3123
+
+# Should WORK (via Cloudflare tunnel only)
+curl https://your-app-domain.com
+```
+
+---
 
 This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
 
@@ -285,8 +371,10 @@ Found a bug? Want to contribute? See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - [USAGE.md](USAGE.md) — Detailed guide for `harden-node.sh`
 - [SETUP-SSH-KEYS.md](SETUP-SSH-KEYS.md) — SSH key setup & authentication
+- [VERIFICATION.md](VERIFICATION.md) — Comprehensive verification guide
 - [SECURITY.md](SECURITY.md) — Responsible disclosure & security policy
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute
+- [CHANGELOG.md](CHANGELOG.md) — Version history
 - [LICENSE](LICENSE) — MIT License
 
 ---

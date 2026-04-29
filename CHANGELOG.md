@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [2.2.0] — 2026-04-29
+
+### Added
+
+- **verify-hardening.sh** — Automated verification script with 50+ security checks
+  - Tests UFW, SSH, Tailscale, iptables, kernel hardening, services, auditd
+  - Color-coded output (✅ pass / ❌ fail)
+  - Summary report with pass/fail counts
+  - Exit codes for CI/CD integration
+  - `VERBOSE=1` debug mode for troubleshooting
+  
+- **hardening-checklist.sh** — Interactive manual verification checklist
+  - All items to verify with explanations
+  - Exact commands to run for each check
+  - Expected output for each command
+  - Manual testing instructions from Mac
+  - Key files to review
+  - Important reminders & notes
+  
+- **VERIFICATION.md** — Comprehensive verification guide (700+ lines)
+  - Step-by-step manual verification for all controls
+  - Defense-in-depth testing (each security layer)
+  - Common issues & troubleshooting
+  - Mac testing procedures (SSH, port scanning, curl tests)
+  - Maintenance checklists (monthly/quarterly/annual)
+  - 40+ test command examples with expected output
+  
+- **Updated README.md** — Added verification section with quick-check instructions
+
+- **Updated USAGE.md** — Added full verification & testing section (350+ lines)
+  - Auto-verification workflow
+  - Manual testing from Mac
+  - Common scenario testing
+  - Troubleshooting failed checks
+
+### Changed
+
+- **Documentation** — README now references VERIFICATION.md for comprehensive testing guide
+
+---
+
 ## [2.1.0] — 2026-04-29
 
 ### Added

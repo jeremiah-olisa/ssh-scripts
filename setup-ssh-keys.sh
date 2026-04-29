@@ -1,32 +1,113 @@
 #!/bin/bash
 # =============================================================================
-# setup-ssh-keys.sh — SSH Key Generation & Authentication Hardening
-# Version: 1.0.0
-# Supports: Ubuntu 24.04 LTS, macOS (key generation only)
-# Hardens SSH: disables root login, disables password auth
-# Idempotent — safe to re-run at any time
-# Usage: sudo bash setup-ssh-keys.sh [--generate] [--key-path PATH] [--user USER]
+# setup-ssh-keys.sh — SSH Key Management & Authentication Hardening
+# =============================================================================
+#
+# WHAT THIS SCRIPT DOES:
+#   Generates new SSH keys (or imports existing ones) and hardens SSH
+#   authentication by:
+#     ✓ Disabling root login          (can't SSH as root user)
+#     ✓ Disabling password login     (can't guess passwords)
+#     ✓ Enabling key-only auth       (must have private key to access)
+#
+# WHY SSH KEYS ARE CRITICAL:
+#   Passwords:
+#     ❌ Can be guessed (brute force attack)
+#     ❌ Can be phished (fake login prompts)
+#     ❌ Are subject to human error
+#   Keys:
+#     ✓ Cryptographically impossible to guess
+#     ✓ Can't be phished (locked in a file)
+#     ✓ Can be revoked instantly
+#
+# USAGE:
+#   # Generate NEW SSH keys (recommended for new deployments)
+#   sudo bash setup-ssh-keys.sh --generate
+#
+#   # Import EXISTING keys from another machine
+#   sudo bash setup-ssh-keys.sh --key-path ~/.ssh/id_rsa.pub
+#
+#   # Setup for a specific non-root user
+#   sudo bash setup-ssh-keys.sh --generate --user devops
+#
+# IMPORTANT - READ FIRST TIME:
+#   When generating keys, the script shows the PRIVATE KEY exactly ONCE.
+#   You MUST copy and save it locally (~/.ssh/id_rsa) RIGHT AWAY.
+#   Once you close the script, this key is inaccessible (by design)!
+#
+# SAFETY FEATURES:
+#   ✓ Idempotent: Safe to re-run multiple times
+#   ✓ Backs up existing authorized_keys before modifying
+#   ✓ Validates SSH syntax with 'sshd -t' before reloading
+#   ✓ Checks file permissions are secure (600 for keys, 700 for ~/.ssh)
+#   ✓ Runs 8 verification checks after completion
+#
+# REQUIREMENTS:
+#   • Root/sudo access
+#   • SSH service installed and running
+#   • OpenSSH server config at /etc/ssh/sshd_config
+#
+# VERSION: 1.0.0 | Last Updated: 2026-04-29
 # =============================================================================
 
+# Bash strict mode:
+#   set -e   = exit immediately if any command fails (stops on errors)
+#   set -u   = exit if using undefined variable (catches typos)
+#   set -o pipefail = pipe failure counts as overall failure
 set -euo pipefail
 
-# === COLORS ===
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+# =============================================================================
+# LOGGING FUNCTIONS - Pretty-print with colors for readability
+# =============================================================================
+RED='\033[0;31m'          # Red for errors
+GREEN='\033[0;32m'        # Green for success
+YELLOW='\033[1;33m'       # Yellow for warnings
+BLUE='\033[0;34m'         # Blue for section headers
+CYAN='\033[0;36m'         # Cyan for info messages
+NC='\033[0m'              # NC = "No Color" (reset terminal color)
 
+# Print success message (green [OK])
 log()     { echo -e "${GREEN}[OK]${NC} $1"; }
+
+# Print warning message (yellow [!])
 warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
+
+# Print error message and EXIT the script (red [ERR])
 err()     { echo -e "${RED}[ERR]${NC} $1"; exit 1; }
+
+# Print info message (cyan [>>])
 info()    { echo -e "${CYAN}[>>]${NC} $1"; }
+
+# Print section header with nice formatting
 section() { echo -e "\n${BLUE}━━━ $1 ━━━${NC}"; }
 
-# === ROOT CHECK ===
-[ "$(id -u)" -ne 0 ] && err "Run as root: sudo bash setup-ssh-keys.sh"
+# =============================================================================
+# SECURITY CHECK: Must run as root
+# =============================================================================
+# This script needs root because:
+#   • Must write to /root/.ssh/ or /home/user/.ssh/
+#   • Must reload the SSH daemon (systemctl)
+#   • Must modify /etc/ssh/sshd_config
+if [ "$(id -u)" -ne 0 ]; then
+  err "This script requires root. Run with: sudo bash setup-ssh-keys.sh"
+fi
 
-# === DEFAULTS ===
+# =============================================================================
+# SCRIPT CONFIGURATION
+# =============================================================================
+# GENERATE_KEYS: If 1, create new SSH key pair; if 0, import existing key
 GENERATE_KEYS=0
+
+# KEY_PATH: Path to public key file (for importing existing keys)
+# Format: /path/to/id_rsa.pub
 KEY_PATH=""
+
+# TARGET_USER: Which user account to setup ("root" by default)
+# Can be changed with --user flag: sudo bash setup-ssh-keys.sh --generate --user devops
 TARGET_USER="root"
+
+# SSH_USER_HOME: Will be set to home directory of TARGET_USER
+# Example: /root or /home/devops
 SSH_USER_HOME=""
 PUBKEY=""
 LOCAL_PUBKEY_PATH=""

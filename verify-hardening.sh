@@ -1,45 +1,130 @@
 #!/bin/bash
 # =============================================================================
-# verify-hardening.sh — Comprehensive Hardening Verification Checklist
-# Version: 1.0.0
-# Verifies all hardening steps from harden-node.sh + setup-ssh-keys.sh
-# Usage: sudo bash verify-hardening.sh
+# verify-hardening.sh — Automated Hardening Verification (50+ Tests)
+# =============================================================================
+#
+# WHAT THIS SCRIPT DOES:
+#   Tests that all hardening steps from harden-node.sh are actually working.
+#   Runs 50+ automated checks and shows which ones PASS (✅) and FAIL (❌).
+#
+# WHY VERIFY:
+#   Sometimes hardening steps fail silently (e.g., UFW rule doesn't apply,
+#   iptables chain not created, service didn't start). This script finds
+#   problems so you can fix them before relying on security.
+#
+# USAGE:
+#   # Run all checks (shows color-coded pass/fail)
+#   sudo bash verify-hardening.sh
+#
+#   # Run with verbose debugging (shows WHY checks pass/fail)
+#   VERBOSE=1 sudo bash verify-hardening.sh
+#
+# WHAT IT CHECKS:
+#   ✓ UFW Firewall       = Rules correctly configured
+#   ✓ SSH Hardening      = Root login disabled, keys required
+#   ✓ Tailscale          = Installed, connected, has IP
+#   ✓ iptables           = DOCKER-USER chain exists, rules applied
+#   ✓ Kernel Hardening   = Sysctl parameters set correctly
+#   ✓ Services           = auditd, fail2ban, AppArmor running
+#   ✓ Audit Logging      = Rules loaded and active
+#
+# EXIT CODES:
+#   0 = All checks passed (system is hardened!)
+#   1 = One or more checks failed (fix the issue)
+#
+# VERBOSE MODE:
+#   Set VERBOSE=1 to see WHY each check passes/fails
+#   VERBOSE=1 sudo bash verify-hardening.sh
+#
+# VERSION: 1.0.0 | Last Updated: 2026-04-29
 # =============================================================================
 
 set -euo pipefail
 
-# === COLORS ===
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+# =============================================================================
+# LOGGING FUNCTIONS - Pretty-print with colors for readability
+# =============================================================================
+RED='\033[0;31m'          # Red = errors or failed checks
+GREEN='\033[0;32m'        # Green = success or passed checks
+YELLOW='\033[1;33m'       # Yellow = warnings
+BLUE='\033[0;34m'         # Blue = section headers
+CYAN='\033[0;36m'         # Cyan = info messages
+NC='\033[0m'              # NC = "No Color" (reset terminal color)
 
+# Print success message with green [OK] prefix
 log()     { echo -e "${GREEN}[OK]${NC} $1"; }
+
+# Print warning message with yellow [!] prefix
 warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
+
+# Print error message with red [ERR] prefix (doesn't exit like in other scripts)
 err()     { echo -e "${RED}[ERR]${NC} $1"; }
+
+# Print info message with cyan [>>] prefix
 info()    { echo -e "${CYAN}[>>]${NC} $1"; }
+
+# Print section header with blue background and dividers
 section() { echo -e "\n${BLUE}━━━ $1 ━━━${NC}"; }
+
+# Print a passed check with green checkmark (✅)
 check()   { echo -e "  ${GREEN}☑${NC}  $1"; }
 fail()    { echo -e "  ${RED}☐${NC}  $1"; }
 
-# === ROOT CHECK ===
-[ "$(id -u)" -ne 0 ] && err "Run as root: sudo bash verify-hardening.sh"
+# =============================================================================
+# SECURITY CHECK: Must run as root
+# =============================================================================
+# This script tests security controls that require root privileges to access
+if [ "$(id -u)" -ne 0 ]; then
+  err "This script requires root. Run with: sudo bash verify-hardening.sh"
+  exit 1
+fi
 
-# === COUNTERS ===
-TOTAL=0; PASSED=0; FAILED=0
+# =============================================================================
+# COUNTERS - Track how many checks pass/fail
+# =============================================================================
+# We increment these as we run each check
+# At the end, we print the summary (e.g., "Passed: 47  Failed: 3")
+TOTAL=0    # Total number of checks run
+PASSED=0   # Number of checks that passed
+FAILED=0   # Number of checks that failed
 
-# === TEST FUNCTION ===
+# =============================================================================
+# VERIFY_CHECK FUNCTION - Generic test function for checking security controls
+# =============================================================================
+# WHAT: Runs a command and checks if output contains an expected string
+# PARAMETERS:
+#   $1 = label: Human-readable name of the check (e.g., "UFW is active")
+#   $2 = cmd: Bash command to run (e.g., "ufw status | grep Status")
+#   $3 = expect: String that output must contain (e.g., "active")
+# EXAMPLE:
+#   verify_check "SSH allows only key auth" "sshd -T | grep pubkeyauth" "yes"
+# BEHAVIOR:
+#   - Runs the command
+#   - If output contains the expected string → PASS (✅ green checkmark)
+#   - If output doesn't contain it → FAIL (❌ red X)
+#   - If VERBOSE=1, shows what we expected vs what we actually got
 verify_check() {
   local label="$1" cmd="$2" expect="$3"
   local result
   
+  # Increment total check counter
   ((TOTAL++))
+  
+  # Run the command and capture output
+  # 2>/dev/null = suppress error messages (don't want them cluttering output)
+  # || echo "" = if command fails entirely, set result to empty string
   result=$(eval "$cmd" 2>/dev/null || echo "")
   
+  # Check if result contains the expected string
   if echo "$result" | grep -q "$expect"; then
+    # PASS: Show green checkmark and count this as a pass
     check "$label"
     ((PASSED++))
   else
+    # FAIL: Show red X and count this as a fail
     fail "$label"
     ((FAILED++))
+    # If user ran with VERBOSE=1, show debugging info
     if [ -n "${VERBOSE:-}" ]; then
       echo "    Expected: $expect"
       echo "    Got: $result"

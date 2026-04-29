@@ -1,9 +1,48 @@
 #!/bin/bash
 # =============================================================================
-# hardening-checklist.sh — Display Hardening Checklist & Manual Verification
-# Version: 1.0.0
-# Shows all items to verify after running harden-node.sh
-# Usage: bash hardening-checklist.sh
+# hardening-checklist.sh — Manual Hardening Verification Checklist
+# =============================================================================
+#
+# WHAT THIS SCRIPT DOES:
+#   Displays a comprehensive checklist of ALL hardening items with:
+#     ✓ Exact commands to run for each check
+#     ✓ Expected output for each command
+#     ✓ Manual testing procedures
+#     ✓ Common configuration files to review
+#     ✓ Important security reminders
+#
+# WHY USE THIS:
+#   While verify-hardening.sh automates testing, sometimes you need to:
+#     • Understand what's being checked
+#     • Run commands manually to see output
+#     • Review configurations by hand
+#     • Test from another machine (Mac)
+#     • Deep-dive into specific security control
+#
+# USAGE:
+#   # Display the full checklist
+#   bash hardening-checklist.sh
+#
+#   Then manually run commands shown in the checklist
+#
+# STRUCTURE:
+#   The checklist is organized by security layer:
+#     1. UFW Firewall - host-level packet filtering
+#     2. SSH - remote access security
+#     3. Tailscale - VPN connectivity
+#     4. Docker / App Ports - container traffic
+#     5. Cloudflare - public access tunnel
+#     6. System Hardening - kernel & services
+#     7. Audit Logging - security event records
+#
+# TESTING FROM MAC:
+#   This checklist also includes commands to run from your Mac to test:
+#     • SSH public IP (should timeout)
+#     • SSH Tailscale IP (should work)
+#     • App ports via IP (should timeout)
+#     • Apps via Cloudflare tunnel (should work)
+#
+# VERSION: 1.0.0 | Last Updated: 2026-04-29
 # =============================================================================
 
 set -euo pipefail

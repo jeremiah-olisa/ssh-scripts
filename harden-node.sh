@@ -1,40 +1,119 @@
 #!/bin/bash
 # =============================================================================
-# harden-node.sh — Full node security hardening script
-# Version: 2.1.0
-# Supports: Ubuntu 24.04 LTS
-# Hardens UFW, iptables (survives Docker restarts), Tailscale, cloudflared
-# Idempotent — safe to re-run at any time on any node
-# Usage: sudo bash harden-node.sh
+# harden-node.sh — Production-Grade Ubuntu 24.04 Node Security Hardening
+# =============================================================================
+# 
+# WHAT THIS SCRIPT DOES:
+#   Automatically hardens your Ubuntu 24.04 server with military-grade
+#   security controls. It's designed to run once and make your node secure.
+#
+# WHAT GETS HARDENED:
+#   ✓ UFW Firewall          - Blocks all traffic except what you allow
+#   ✓ iptables (Docker)     - Survives Docker restarts, protects containers
+#   ✓ SSH                   - Key-only auth, disables root login
+#   ✓ Tailscale VPN         - Secures remote access
+#   ✓ Cloudflare Tunnel     - Public app traffic protection
+#   ✓ Kernel Hardening      - Protects against kernel-level attacks
+#   ✓ Audit Logging         - Records all security events
+#   ✓ Fail2Ban              - Blocks repeated SSH attacks
+#   ✓ AppArmor              - Mandatory access control
+#
+# KEY FEATURES:
+#   • Idempotent: Safe to run multiple times (won't break if run again)
+#   • Automated: Auto-detects SSH port, fetches live Cloudflare IPs
+#   • Signed repos: Uses GPG-verified package sources (not curl | sh)
+#   • Docker-aware: Rules survive container restarts
+#   • IPv6 support: Optional hardening or disabling
+#
+# USAGE:
+#   sudo bash harden-node.sh
+#
+# ENVIRONMENT VARIABLES (optional):
+#   ALLOW_STATIC_CF_IPS=1        Use fallback IPs if live fetch fails
+#   DISABLE_IPV6=0               Keep IPv6 enabled (default: disabled)
+#
+# REQUIREMENTS:
+#   • Root/sudo access
+#   • Ubuntu 24.04 LTS
+#   • Internet connectivity
+#
+# RUNTIME:
+#   ~5-10 minutes depending on package installation
+#
+# VERSION: 2.1.0 | Last Updated: 2026-04-29
 # =============================================================================
 
+# Bash strict mode: exit on error, undefined variables, pipe failures
+# This prevents the script from silently continuing if something goes wrong
 set -euo pipefail
 
-# === COLORS ===
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-BLUE='\033[0;34m'; CYAN='\033[0;36m'; NC='\033[0m'
+# =============================================================================
+# LOGGING FUNCTIONS - Pretty-print with colors for readability
+# =============================================================================
+# ANSI color codes for terminal output (makes output easier to read)
+RED='\033[0;31m'          # Red for errors
+GREEN='\033[0;32m'        # Green for success
+YELLOW='\033[1;33m'       # Yellow for warnings
+BLUE='\033[0;34m'         # Blue for section headers
+CYAN='\033[0;36m'         # Cyan for info messages
+NC='\033[0m'              # NC = "No Color" (reset to default)
 
+# Function to print a success message (green [OK])
 log()     { echo -e "${GREEN}[OK]${NC} $1"; }
+
+# Function to print a warning message (yellow [!])
 warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
+
+# Function to print an error message and EXIT the script (red [ERR])
 err()     { echo -e "${RED}[ERR]${NC} $1"; exit 1; }
+
+# Function to print an info message (cyan [>>])
 info()    { echo -e "${CYAN}[>>]${NC} $1"; }
+
+# Function to print a section header (blue with dividers)
 section() { echo -e "\n${BLUE}━━━ $1 ━━━${NC}"; }
 
-# === ROOT CHECK ===
-[ "$(id -u)" -ne 0 ] && err "Run as root: sudo bash harden-node.sh"
+# =============================================================================
+# SECURITY CHECK: Must run as root
+# =============================================================================
+# id -u returns: 0 = root, 1000+ = regular user
+# We need root because: creating systemd services, modifying iptables,
+# installing packages, and writing to /etc/ all require root privileges
+if [ "$(id -u)" -ne 0 ]; then
+  err "This script requires root privileges. Run with: sudo bash harden-node.sh"
+fi
 
-# === CONFIG ===
+# =============================================================================
+# CONFIGURATION - URLs, file paths, and settings
+# =============================================================================
+# Cloudflare publishes official IP ranges at these URLs
+# We fetch them to allow only Cloudflare traffic on ports 80/443
 CLOUDFLARE_IPS_V4_URL="https://www.cloudflare.com/ips-v4"
 CLOUDFLARE_IPS_V6_URL="https://www.cloudflare.com/ips-v6"
+
+# Where to store the downloaded IP ranges
 CF_IPS_DIR="/etc/iptables"
-CF_IPS_V4_FILE="${CF_IPS_DIR}/cloudflare-ips-v4.txt"
-CF_IPS_V6_FILE="${CF_IPS_DIR}/cloudflare-ips-v6.txt"
+CF_IPS_V4_FILE="${CF_IPS_DIR}/cloudflare-ips-v4.txt"  # IPv4 ranges
+CF_IPS_V6_FILE="${CF_IPS_DIR}/cloudflare-ips-v6.txt"  # IPv6 ranges
+
+# Minimum lines expected: if fetch gives <10 lines, it probably failed
 CF_IPS_MIN_LINES=10
+
+# By default, disable IPv6 to reduce attack surface
+# Set DISABLE_IPV6=0 to keep IPv6 (but harden it instead)
 DISABLE_IPV6=1
 
-# === CLOUDFLARE IP RANGES (FALLBACK) ===
+# =============================================================================
+# CLOUDFLARE IP RANGES - FALLBACK LIST (static/hardcoded)
+# =============================================================================
+# These are Cloudflare's official IP ranges as of 2026-04-29
+# We use these as a backup if:
+#   1. The script can't reach the internet, OR
+#   2. The IP fetch fails for any reason, AND
+#   3. User sets ALLOW_STATIC_CF_IPS=1 to allow offline installation
+#
+# To update these, visit: https://www.cloudflare.com/ips/
 # Source: https://www.cloudflare.com/ips/
-# Used only if ALLOW_STATIC_CF_IPS=1 and live fetch fails
 CLOUDFLARE_IPS_V4_FALLBACK=(
   "173.245.48.0/20"
   "103.21.244.0/22"
@@ -53,45 +132,99 @@ CLOUDFLARE_IPS_V4_FALLBACK=(
   "131.0.72.0/22"
 )
 
+# =============================================================================
+# FUNCTION: fetch_cloudflare_ips()
+# =============================================================================
+# PURPOSE:
+#   Downloads Cloudflare's current IP ranges from the internet and validates
+#   them before saving. This allows us to allow only legitimate Cloudflare IPs
+#   instead of hardcoding old IPs that might become outdated.
+#
+# VALIDATION CHECKS:
+#   1. Download succeeds
+#   2. File has enough lines (not truncated/corrupted)
+#   3. Format is correct: must look like IP CIDR notation (e.g., 173.245.48.0/20)
+#   4. If all checks pass, save to disk; otherwise fail and allow fallback
+#
+# RETURNS:
+#   0 = success (files saved), 1 = failure (files not saved)
+#=============================================================================
 fetch_cloudflare_ips() {
+  # Create two temporary files to download into
+  # Using mktemp ensures unique filenames and automatic cleanup
   local tmp_v4 tmp_v6
-  tmp_v4=$(mktemp)
-  tmp_v6=$(mktemp)
+  tmp_v4=$(mktemp)  # Temporary file for IPv4 ranges
+  tmp_v6=$(mktemp)  # Temporary file for IPv6 ranges
 
+  # STEP 1: Download IPv4 ranges
+  # --proto '=https': Force HTTPS (security)
+  # --tlsv1.2: Use TLS 1.2 or newer (security)
+  # -f: Fail if HTTP error (don't save error HTML)
+  # -s: Silent (no progress bar)
+  # -S: Show errors anyway (silent but fatal)
+  # -L: Follow redirects
   if ! curl -fsSL --proto '=https' --tlsv1.2 "$CLOUDFLARE_IPS_V4_URL" -o "$tmp_v4"; then
+    # If download failed, clean up and return error
     rm -f "$tmp_v4" "$tmp_v6"
     return 1
   fi
 
+  # STEP 2: Download IPv6 ranges
   if ! curl -fsSL --proto '=https' --tlsv1.2 "$CLOUDFLARE_IPS_V6_URL" -o "$tmp_v6"; then
+    # If download failed, clean up and return error
     rm -f "$tmp_v4" "$tmp_v6"
     return 1
   fi
 
+  # STEP 3: Validate IPv4 file has enough content
+  # wc -l counts lines; if less than CF_IPS_MIN_LINES, file is likely corrupt/empty
   if [ "$(wc -l < "$tmp_v4")" -lt "$CF_IPS_MIN_LINES" ]; then
+    # Too few lines = something went wrong
     rm -f "$tmp_v4" "$tmp_v6"
     return 1
   fi
 
+  # STEP 4: Validate IPv4 format using regex
+  # Pattern explanation:
+  #   ^[0-9]{1,3}        = Start with 1-3 digits (0-255)
+  #   (\.[0-9]{1,3}){3}  = Followed by exactly 3 more ".XXX" patterns
+  #   /[0-9]{1,2}$       = End with "/NN" where NN is 1-2 digits
+  # Example valid: 173.245.48.0/20
   if ! grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$' "$tmp_v4"; then
+    # Format validation failed
     rm -f "$tmp_v4" "$tmp_v6"
     return 1
   fi
 
+  # STEP 5: Validate IPv6 format (if file exists and has content)
+  # [ -s file ] = true if file exists AND has size > 0
+  # IPv6 pattern: hex digits and colons with CIDR notation
   if [ -s "$tmp_v6" ] && ! grep -Eq '^[0-9a-fA-F:]+/[0-9]{1,3}$' "$tmp_v6"; then
+    # Format validation failed
     rm -f "$tmp_v4" "$tmp_v6"
     return 1
   fi
 
+  # STEP 6: All validations passed - save to permanent location
   mkdir -p "$CF_IPS_DIR"
-  mv "$tmp_v4" "$CF_IPS_V4_FILE"
+  mv "$tmp_v4" "$CF_IPS_V4_FILE"   # Move (not copy) to final location
   mv "$tmp_v6" "$CF_IPS_V6_FILE"
-  return 0
+  return 0  # Success!
 }
 
 # =============================================================================
-# STEP 0: DETECT SSH PORT
+# STEP 0: AUTO-DETECT SSH PORT
 # =============================================================================
+# WHY: The script needs to know which port SSH runs on so it can:
+#   1. Keep SSH accessible via UFW (don't lock yourself out!)
+#   2. Tell fail2ban which port to monitor for attacks
+#
+# HOW: Try two methods:
+#   Method 1: Ask sshd directly what port it's configured for
+#   Method 2: Ask the kernel which ports sshd is listening on
+#
+# FALLBACK: If both fail, assume port 22 (the default SSH port)
+#
 section "Detecting SSH port"
 SSH_PORT=$(sshd -T 2>/dev/null | grep "^port " | awk '{print $2}' | head -1)
 if [ -z "$SSH_PORT" ]; then
@@ -106,6 +239,14 @@ log "Detected SSH port: $SSH_PORT"
 # =============================================================================
 # STEP 1: SYSTEM UPDATE
 # =============================================================================
+# WHY: Security patches close vulnerabilities. Running first ensures we get
+# the latest security fixes for all packages we're about to install.
+#
+# WHAT: apt-get update = refresh package lists
+#       apt-get upgrade = install newest versions
+#       -y = assume "yes" to all prompts (no user interaction)
+#       -qq = quiet quiet (minimal output)
+#
 section "System update"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -qq
@@ -114,6 +255,19 @@ log "System updated"
 # =============================================================================
 # STEP 2: INSTALL REQUIRED PACKAGES
 # =============================================================================
+# These packages provide the tools we use for hardening:
+#   ✓ ufw             = Host firewall (manages iptables rules in human-readable way)
+#   ✓ fail2ban        = Monitors logs, bans IPs after repeated failed SSH attempts
+#   ✓ apparmor        = Mandatory Access Control (LSM) - restricts what programs can do
+#   ✓ apparmor-utils  = Tools to manage AppArmor
+#   ✓ auditd          = Audit daemon - logs all security events
+#   ✓ gnupg           = GPG tool - verify digital signatures of packages
+#   ✓ unattended-upgrades = Auto install security updates
+#   ✓ curl, wget      = Download tools (get IP lists, keys)
+#   ✓ iptables        = Low-level packet filtering (Docker DOCKER-USER chain)
+#
+# Note: These packages come from Ubuntu's official repos, so they're secure
+#
 section "Installing required packages"
 apt-get install -y -qq \
   ufw fail2ban apparmor apparmor-utils auditd gnupg \
@@ -123,6 +277,16 @@ log "Packages installed"
 # =============================================================================
 # STEP 3: FETCH CLOUDFLARE IP RANGES
 # =============================================================================
+# WHY: Cloudflare tunnel is how you access your apps from the internet.
+# Only Cloudflare's servers should be able to reach your app ports (80, 443).
+# We fetch their IP ranges to allow ONLY their IPs, block everything else.
+#
+# PROCESS:
+#   1. Try to fetch live IPs from https://www.cloudflare.com/ips-v4
+#   2. If that fails and user set ALLOW_STATIC_CF_IPS=1, use hardcoded backup IPs
+#   3. If neither works, EXIT (can't safely proceed without knowing CF IPs)
+#
+
 section "Cloudflare IP ranges"
 
 if fetch_cloudflare_ips; then

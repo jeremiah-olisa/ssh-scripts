@@ -237,6 +237,30 @@ fi
 log "Detected SSH port: $SSH_PORT"
 
 # =============================================================================
+# STEP 0.5: PRE-FLIGHT APT REPO SANITY (cloudflared)
+# =============================================================================
+# WHY: Some servers already have a broken/old cloudflared repo entry from
+# previous attempts. If so, apt-get update fails BEFORE this script reaches
+# the cloudflared install step where we fix keys.
+#
+# WHAT: If cloudflared.list exists but the required keyring is missing, disable
+# that repo temporarily so system update can proceed. Step 5 will recreate it
+# correctly with the proper keyring.
+section "Pre-flight APT repo sanity"
+
+CLOUDFLARED_LIST="/etc/apt/sources.list.d/cloudflared.list"
+CLOUDFLARED_LIST_DISABLED="/etc/apt/sources.list.d/cloudflared.list.disabled-by-harden-node"
+CLOUDFLARED_KEYRING="/usr/share/keyrings/cloudflare-archive-keyring.gpg"
+
+if [ -f "$CLOUDFLARED_LIST" ] && [ ! -f "$CLOUDFLARED_KEYRING" ]; then
+  warn "Detected stale cloudflared repo without keyring; disabling it temporarily"
+  mv "$CLOUDFLARED_LIST" "$CLOUDFLARED_LIST_DISABLED"
+  log "Disabled stale cloudflared repo for bootstrap"
+else
+  log "APT repo sanity check complete"
+fi
+
+# =============================================================================
 # STEP 1: SYSTEM UPDATE
 # =============================================================================
 # WHY: Security patches close vulnerabilities. Running first ensures we get
